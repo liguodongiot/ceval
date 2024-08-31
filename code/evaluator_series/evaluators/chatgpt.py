@@ -52,10 +52,13 @@ class ChatGPT_Evaluator(Evaluator):
         return prompt
 
     def eval_subject(self, subject_name, test_df, dev_df=None, few_shot=False, save_result_dir=None,cot=False):
+        
         correct_num = 0
+        
         if save_result_dir:
             result = []
             score=[]
+        
         if few_shot:
             few_shot_prompt = self.generate_few_shot_prompt(subject_name, dev_df,cot=cot)
         else:
@@ -65,8 +68,11 @@ class ChatGPT_Evaluator(Evaluator):
                     "content":f"你是一个中文人工智能助手，以下是中国关于{subject_name}考试的单项选择题，请选出其中的正确答案。"
                 }
             ]
+            
+
         answers = list(test_df['answer'])
-        for row_index, row in tqdm(test_df.iterrows(),total=len(test_df)):
+        
+        for row_index, row in tqdm(test_df.iterrows(), total=len(test_df)):
             question = self.format_example(row, include_answer=False)
             full_prompt = few_shot_prompt + question
             if not few_shot:

@@ -8,14 +8,13 @@ from evaluators.evaluator import Evaluator
 from time import sleep
 import requests
 
-url = "http://10.xxx.2.145:9009/v1/chat/completions"
+url = "http://10.xxx.2.145:8400/v2/models/ensemble/generate"
 
 
-class Qwen_1_5_Evaluator(Evaluator):
+class Trtllm_Qwen_1_5_Evaluator(Evaluator):
     def __init__(self, choices, k, model_name):
-        super(Qwen_1_5_Evaluator, self).__init__(choices, model_name, k)
-        #self.tokenizer = AutoTokenizer.from_pretrained("/workspace/models/Qwen1.5-7B-Chat", trust_remote_code=True)
-        #self.model = AutoModel.from_pretrained("/workspace/models/Qwen1.5-7B-Chat",  trust_remote_code=True).half().to(device)
+        super(Trtllm_Qwen_1_5_Evaluator, self).__init__(choices, model_name, k)
+
 
     def format_example(self, line, include_answer=True, cot=False):
 
@@ -41,9 +40,10 @@ class Qwen_1_5_Evaluator(Evaluator):
                 ]
         else:
             # False
-            return [
-                {"role":"user","content":example},
-            ]
+            # return [
+            #     {"role":"user","content":example},
+            # ]
+            return example
 
     def generate_few_shot_prompt(self, subject, dev_df, cot=False):
         prompt=[
@@ -62,6 +62,8 @@ class Qwen_1_5_Evaluator(Evaluator):
             prompt+=tmp
         return prompt
 
+
+
     def eval_subject(self, subject_name, test_df, dev_df=None, few_shot=False, save_result_dir=None,cot=False):
         correct_num = 0
         if save_result_dir:
@@ -71,43 +73,52 @@ class Qwen_1_5_Evaluator(Evaluator):
         if few_shot:
             few_shot_prompt = self.generate_few_shot_prompt(subject_name, dev_df,cot=cot)
         else:
-            few_shot_prompt=[
-                {
-                    "role":"system",
-                    "content":f"你是一个中文人工智能助手，以下是中国关于{subject_name}考试的单项选择题，请选出其中的正确答案。"
-                }
-            ]
+            # few_shot_prompt=[
+            #     {
+            #         "role":"system",
+            #         "content":f"你是一个中文人工智能助手，以下是中国关于{subject_name}考试的单项选择题，请选出其中的正确答案。"
+            #     }
+            # ]
+            few_shot_prompt = f"你是一个中文人工智能助手，以下是中国关于{subject_name}考试的单项选择题，请选出其中的正确答案。"
 
 
         answers = list(test_df['answer'])
 
         for row_index, row in tqdm(test_df.iterrows(), total=len(test_df)):
+            
             question = self.format_example(row, include_answer=False)
-            full_prompt = few_shot_prompt + question
+            
+            # full_prompt = few_shot_prompt + question
 
-            if not few_shot:
-                full_prompt[-1]["content"]=f"以下是中国关于{subject_name}考试的单项选择题，请选出其中的正确答案。\n\n"+full_prompt[-1]["content"]
+            # if not few_shot:
+            #     full_prompt[-1]["content"]=f"以下是中国关于{subject_name}考试的单项选择题，请选出其中的正确答案。\n\n"+full_prompt[-1]["content"]
 
-            print(str(full_prompt))
+            # print(str(full_prompt))
 
             response=None
             timeout_counter=0
             while response is None and timeout_counter<=30:
 
                 try:
+                    content = f"<|im_start|>system\n{few_shot_prompt}<|im_end|>\n<|im_start|>user\n{question}<|im_end|>\n<|im_start|>assistant\n"          
+                    print(content)
+                    print("\n")
                     payload = {
-                        "model": "qwen1.5",
-                        "messages": full_prompt,
-                        "max_tokens": 256,
-                        "top_p": 0.95,
-                        "seed": 100,
-                        "temperature": 0.8,
-                        "stream": False
+                        "text_input": content,
+                        "parameters": {
+                            "max_tokens": 256,
+                            "bad_words": [""],
+                            "stop_words": [""],
+                            "top_p": 0.95,
+                            "temperature": 0.8,
+                            "random_seed": 100,
+                            "return_log_probs": True
+                        }
                     }
 
                     headers = {"content-type": "application/json"}
                     response = requests.request("POST", url, json=payload, headers=headers)
-                    print(response.text)
+                    # print(response.text)
 
                 except Exception as msg:
                     if "timeout=600" in str(msg):
@@ -120,7 +131,7 @@ class Qwen_1_5_Evaluator(Evaluator):
                 response_str=""
             else:
                 response_json = json.loads(response.text)
-                response_str = response_json['choices'][0]['message']['content']
+                response_str = response_json['text_output']
 
             print(response_str)
             print(f"\n--------------{row_index}----------------\n")
@@ -155,7 +166,8 @@ class Qwen_1_5_Evaluator(Evaluator):
                     if len(response_str)>0:
                         ans_list=self.extract_ans(response_str)
                         print("正确答案：", answers[row_index])
-                        print("实际答案：", str(ans_list))
+                        print("实际答案：", response_str)
+                        print("实际抽取答案：", str(ans_list))
                         print("\n-------------------------\n")
                         if len(ans_list)>0 and (ans_list[-1]==row["answer"]):
                             correct_num+=1

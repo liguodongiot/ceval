@@ -2,20 +2,15 @@ import os
 import re
 from tqdm import tqdm
 import json
-import torch
-from transformers import AutoTokenizer, AutoModel
 from evaluators.evaluator import Evaluator
 from time import sleep
 import requests
 
-url = "http://10.xxx.2.145:9009/v1/chat/completions"
 
-
-class Qwen_1_5_Evaluator(Evaluator):
-    def __init__(self, choices, k, model_name):
-        super(Qwen_1_5_Evaluator, self).__init__(choices, model_name, k)
-        #self.tokenizer = AutoTokenizer.from_pretrained("/workspace/models/Qwen1.5-7B-Chat", trust_remote_code=True)
-        #self.model = AutoModel.from_pretrained("/workspace/models/Qwen1.5-7B-Chat",  trust_remote_code=True).half().to(device)
+class Vllm_Qwen_1_5_Evaluator(Evaluator):
+    def __init__(self, choices, k, model_name, url=None):
+        super(Vllm_Qwen_1_5_Evaluator, self).__init__(choices, model_name, k)
+        self.url = url if url is not None else "http://10.xxx.2.145:9009/v1/chat/completions"
 
     def format_example(self, line, include_answer=True, cot=False):
 
@@ -92,6 +87,7 @@ class Qwen_1_5_Evaluator(Evaluator):
 
             response=None
             timeout_counter=0
+            
             while response is None and timeout_counter<=30:
 
                 try:
@@ -106,7 +102,7 @@ class Qwen_1_5_Evaluator(Evaluator):
                     }
 
                     headers = {"content-type": "application/json"}
-                    response = requests.request("POST", url, json=payload, headers=headers)
+                    response = requests.request("POST", self.url, json=payload, headers=headers)
                     print(response.text)
 
                 except Exception as msg:
@@ -155,7 +151,8 @@ class Qwen_1_5_Evaluator(Evaluator):
                     if len(response_str)>0:
                         ans_list=self.extract_ans(response_str)
                         print("正确答案：", answers[row_index])
-                        print("实际答案：", str(ans_list))
+                        print("实际答案：", response_str)
+                        print("实际抽取答案：", str(ans_list))
                         print("\n-------------------------\n")
                         if len(ans_list)>0 and (ans_list[-1]==row["answer"]):
                             correct_num+=1
@@ -174,6 +171,7 @@ class Qwen_1_5_Evaluator(Evaluator):
             test_df["correctness"]=score
             test_df.to_csv(os.path.join(save_result_dir, f'{subject_name}_val.csv'),encoding="utf-8",index=False)
         return correct_ratio
+
 
     def extract_ans(self,response_str):
         pattern=[
@@ -204,3 +202,4 @@ class Qwen_1_5_Evaluator(Evaluator):
             else:
                 break
         return ans_list
+
